@@ -25,7 +25,7 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 
 When you click the **Knit** b;utton a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
-```{r cars}
+```{r loadpackages}
 
 library(data.table)
 library(dplyr)
@@ -35,7 +35,12 @@ library(babynames)
 library(genderizeR)
 library(descr)
 library(ggplot2)
+library(scales)
 
+
+```
+
+```{r importdata, cache = TRUE}
 CountyData2012 <- fread("http://transparentcalifornia.com/export/2012-counties.csv",
                     stringsAsFactors=TRUE)
 
@@ -59,6 +64,7 @@ summary(CountyData)
 CountyData <- CountyData %>%
   filter(!grepl("Not Provided|Redacted Name Redacted Name|Redacted Redacted|REDACTED REDACTED|Xxx Xxx|Undisclosed|Redact Redact|Undisclosed Undisclosed|Name Withheld Name Withheld|NAME REDACTED|REDACTED|Safety Personnel - Name Redacted|NAME WITHHELD|Exempt From Disclosure",
                 `Employee Name`, ignore.case =TRUE)) %>% 
+  filter(`Total Pay & Benefits` > 0) %>%
   droplevels()
 
 summary(CountyData)
@@ -112,7 +118,6 @@ MissingNames <- CountyDataWithGender %>%
   ungroup() %>%
   arrange(desc(count))
 
-
 rm(list= ls(pattern = "listOfNames"))
 
 # calc the median pay by county
@@ -121,7 +126,6 @@ CountyDataWithGender <- CountyDataWithGender %>%
   group_by(Agency, Year) %>%
   mutate(medianPay = median(`Total Pay & Benefits`),
          AboveOrBelowMedianPay = ifelse(`Total Pay & Benefits`>=  medianPay ,"above","below"))
-
 
 ```
 
@@ -136,12 +140,10 @@ CountyDataWithGender %>%
   summarise(count = n()) %>%
   spread(FinalGender, count)
 
-
 testData <- CountyDataWithGender %>%
   filter (FinalGender !="bothMissing") %>%
   select(Agency, Year, FinalGender, AboveOrBelowMedianPay) %>%
   mutate(AgencyYear = paste0(Agency,"-",Year)) %>% droplevels()
-
 
 doExpectedValues = function(sel_name) {
   dum = filter(testData, AgencyYear == sel_name) %>% droplevels()
@@ -156,14 +158,11 @@ Category_names <- unique(testData$AgencyYear)
 # assign player names to list of tables
 names(testdataExpected) <- Category_names
 
-
 testdataExpectedFinal <- testdataExpected %>% # head(1000) %>%
   plyr::ldply(data.frame) %>%
   select(AgencyYear = 1, above, below) %>%
   mutate(FinalGender = rep(c("FemaleLikely","MaleLikely"), 150)) %>%
   gather(AboveOrBelowMedianPay, ExpectedCount, -c(AgencyYear, FinalGender))
-
-
 
 doExpectedPValues = function(sel_name) {
   dum = filter(testData, AgencyYear == sel_name) %>% droplevels()
@@ -177,77 +176,163 @@ testDataPvalues <- lapply(unique(testData$AgencyYear), doExpectedPValues)
 # assign player names to list of tables
 names(testDataPvalues) <- Category_names
 
+testDataPvaluesFinal <- testDataPvalues %>% # head(1000) %>%
+  plyr::ldply(data.frame) %>%
+  select(AgencyYear = 1, pvalue = 2) # %>%
+  #mutate(pvalue = trunc(pvalue, 4))
+
+```
+
+
+
+```{r table survivalFinalpander, include=TRUE}
+
+t <-  CountyDataWithGender %>%
+  filter (FinalGender !="bothMissing") %>%
+  mutate(AgencyYear = paste0(Agency,"-",Year)) %>%
+  group_by(AgencyYear, AboveOrBelowMedianPay, FinalGender) %>%
+  summarise(ActualCount = n()) %>%
+  left_join(testdataExpectedFinal) %>%
+  left_join(testDataPvaluesFinal) %>%
+  ungroup() %>%
+  separate(AgencyYear, c("Agency", "Year"), "-") %>%
+  filter(Year == "2014",
+         AboveOrBelowMedianPay == "above",
+         FinalGender == "FemaleLikely") %>%
+  select(Agency,  ActualCount, ExpectedCount , pvalue) %>%
+   add_rownames( var = "ID") %>%
+  droplevels() %>%
+  mutate(pvalue = ifelse(pvalue <= 0.05,
+                         paste0("**",formatC(pvalue, 4),"**"),
+                                formatC(pvalue, 4)))
+ 
+library(pander)
+
+panderOptions('digits', 1)
+panderOptions('round', c(0,0,0,0))
+panderOptions('keep.trailing.zeros', TRUE)
+panderOptions('decimal.mark', ".")
+panderOptions('big.mark', ",")
+panderOptions('table.split.cells', c(35, 35, 10, 10, 10))
+#panderOptions("table.style", "grid") #emphasize.strong.rows(which(m$hp > 100))
+#panderOptions('emphasize.strong.rows', c(which(t$pvalue <= 0.05, arr.ind = TRUE)))
+#panderOptions('emphasize.cols', (which(t$pvalue <= 0.05, arr.ind = TRUE)))
+
+pander(t,
+       split.table = Inf,
+       caption = "Expected and observed counts by gender for year 2014 by county")
+
+```
+
+
+```{r plotStrucChangeTest, fig.width = 6, fig.height = 9, fig.fullwidth = TRUE, fig.cap= "Axxxxe.", message = FALSE, warning = FALSE, include = TRUE, eval = TRUE}
 
 ## merge all the sets and put them on a nice looking table
 ### plot the data too
 
-testDataPvaluesFinal <- testDataPvalues %>% # head(1000) %>%
-  plyr::ldply(data.frame) %>%
-  select(AgencyYear = 1, pvalue = 2) %>%
-  mutate(pvalue = trunc(pvalue, 4))
-
-
 t <- CountyDataWithGender %>%
   filter (FinalGender !="bothMissing") %>%
   mutate(AgencyYear = paste0(Agency,"-",Year)) %>%
-  group_by(AgencyYear, AboveOrBelowMedianPay,FinalGender) %>%
+  group_by(AgencyYear, AboveOrBelowMedianPay, FinalGender) %>%
   summarise(ActualCount = n()) %>%
   left_join(testdataExpectedFinal) %>%
   ungroup() %>%
   separate(AgencyYear, c("Agency", "Year"), "-") %>%
   gather(Metric, value, -c(Agency, Year, AboveOrBelowMedianPay, FinalGender))
 
-
-
-ggplot(t, aes(Year, value)) +
+ggplot(t, aes(value, Metric)) +
   geom_point( aes(colour = FinalGender,
-                  shape = AboveOrBelowMedianPay),
-              alpha = 3/4) + facet_grid(Metric + Agency ~ Year)
-
-
-  facet_wrap(~Agency, scales = "free_y") +
-  
-  scale_colour_manual(
-  values = c("8" = "red","4" = "blue","6" = "green"))
-
-
-    scale_shape_manual(values = c(rep(1, 9)),
-                     guide = FALSE) +
-  theme(axis.text.x  = element_text(angle=90, vjust=0.5, size=8)) 
-
-
-
-  scale_size(name = "Total Students",
-             breaks = c(500,1000,2000,3000),
-             labels = c("500","1,000","2,000","3,000"))
-
-  
-  ggplot(t, aes(Year, value, fill=FinalGender)) + 
-    geom_bar(stat = "identity", position = "dodge") +
-  facet_wrap(~Agency)
-
-
-
-ggplot(t, aes(colour=factor(FinalGender))) + 
-  geom_segment(aes(x=ExpectedCount, xend=ExpectedCount, 
-                   y=AgencyYear, yend=AgencyYear), size=1) + 
-  theme_minimal() +
-  scale_x_continuous(trans=log_trans(), breaks=c(100,1000,10000,20000),
+                  shape = Year),
+              alpha = 3/4,
+              size = .5) + 
+  #facet_wrap(~Agency, scales = "free_x") +
+  facet_grid(Agency ~ ., scales = "free_x",  space = "free") + 
+  scale_x_continuous(trans=log_trans(), 
+                     breaks=c(200,2000,10000,20000),
                      labels = comma_format()) +
-  xlab("Violent Crime Rate per 100,000 residents (log scale)") +
-  ylab("City") +
-  geom_vline(xintercept=medianViolent2013, color = "black") +
-  geom_vline(xintercept=medianViolent2009, color = "black") +
-  annotate("text", label = paste ("Median violent crime rate for L.A. County cities in 2013 was", 
-                                  round(medianViolent2013,0), "crimes per 100,000 residents", 
-                                  sep = " "), x = medianViolent2013, y = 1, 
-           hjust=0, vjust=1.10, angle = 90, size = 4, colour = "black") + 
-  annotate("text", label = paste ("Median violent crime rate for L.A. County cities in 2009 was", 
-                                  round(medianViolent2009,0), "crimes per 100,000 residents", 
-                                  sep = " "), x = medianViolent2009, y = 1, 
-           hjust=0, vjust=1.10, angle = 90, size = 4, colour = "black") + 
-  theme(axis.text.x  = element_text(angle=90, vjust=0.5, size=8), 
-        axis.text.y  = element_text(angle=0, vjust=0.5, size=6), legend.position = "bottom")
+  theme(        axis.text.x  =element_text(size = 5, 
+                                           angle = 00,
+                                           color = "black", 
+                                           hjust = 0),
+                axis.text.y  =element_text(size = 5, 
+                                           angle = 00,
+                                           color = "black", 
+                                           hjust = 0),
+                strip.text.y = element_text(size = 5,
+                                            angle = 0))
+
+
+ # facet_grid(Year  ~ Metric + Agency)
+
+
+ # facet_wrap(~Agency, scales = "free_y") +
+  
+#  scale_colour_manual(
+#  values = c("8" = "red","4" = "blue","6" = "green"))
+
+
+```
+
+```{r descriptionTable}
+
+library(Hmisc)
+
+t <- CountyDataWithGender %>%
+    filter (FinalGender !="bothMissing",
+            Year == 2014) %>%
+  mutate(AboveOrBelowMedianPay = as.factor(AboveOrBelowMedianPay)) %>% 
+  droplevels
+
+DescTable <-  summary(AboveOrBelowMedianPay ~ Agency,
+                      data = t, 
+                      method="reverse", 
+                      test = T, 
+                      continuous = 0)
+
+# fuction to take the first row of comment from the latex output
+
+mylatex <- function (...) {
+  o <- capture.output(latex(...))
+  # this will strip /all/ line-only comments; or if you're only
+  #  interested in stripping the first such comment you could
+  #  adjust accordingly
+  o <- grep('^%', o, inv=T, value=T)
+  cat(o, sep='\n')
+  }
+
+```
+
+
+
+
+```{r whole county vs target area table, results ='asis', message = FALSE, warning = FALSE, include=TRUE}
+
+# render the table
+
+options(digits=1)
+mylatex (DescTable, 
+         exclude1=FALSE, 
+         npct ='numerator', 
+         npct.size = "footnotesize", 
+         what=c('%'), 
+         landscape = FALSE, 
+         file = "", 
+         long = T, 
+         middle.bold=TRUE, 
+         longtable = FALSE,
+         overall=TRUE, 
+         label = "tbl:descTable1",  
+         prmsd = TRUE,  
+         size="small", 
+         caption = "Descriptive statistics by required course status", 
+         caption.loc='bottom',
+         where="!htbp") # col.just=c("l", "p{3in}")
+
+
+```
+
+
+```{r eval= FALSE}
 
 # plot something like this
 #  https://learnr.wordpress.com/2009/03/29/ggplot2_marimekko_mosaic_chart/
