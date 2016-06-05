@@ -16,7 +16,6 @@ rm(list=ls(all=TRUE)) #start with empty workspace
 
 knitr::opts_chunk$set(cache = TRUE, echo = FALSE, message = FALSE, warning = FALSE, include = FALSE)
 
-
 ```
 
 ## R Markdown
@@ -32,7 +31,7 @@ library(dplyr)
 library(tidyr)
 library(stringr)
 library(babynames)
-library(genderizeR)
+# library(genderizeR)
 library(descr)
 library(ggplot2)
 library(scales)
@@ -41,29 +40,37 @@ library(scales)
 ```
 
 ```{r importdata, cache = TRUE}
+
+
 CountyData2012 <- fread("http://transparentcalifornia.com/export/2012-counties.csv",
-                    stringsAsFactors=TRUE)
+                    stringsAsFactors = TRUE)
 
 CountyData2013 <- fread("http://transparentcalifornia.com/export/2013-counties.csv",
-                    stringsAsFactors=TRUE)
+                    stringsAsFactors = TRUE)
 
 CountyData2014 <- fread("http://transparentcalifornia.com/export/2014-counties.csv",
-                    stringsAsFactors=TRUE)
+                    stringsAsFactors = TRUE)
 
-CountyData2015<- fread("http://transparentcalifornia.com/export/2015-counties.csv",
-                    stringsAsFactors=TRUE)
+CountyData2015 <- fread("http://transparentcalifornia.com/export/2015-counties.csv",
+                    stringsAsFactors = TRUE)
 
 CountyData <- rbind(CountyData2012,
                     CountyData2013,
                     CountyData2014,
-                    'fill' =TRUE) # County Data for 2015 seems incomplete now
+                    'fill' = TRUE) # County Data for 2015 seems incomplete now
 summary(CountyData)
 
+
+```
+
+```{r cleanUpTheData}
 # remove recods where the name is not provided
 
+namesToRemove <- c("Not Provided|Redacted Name Redacted Name|Redacted Redacted|REDACTED REDACTED|Xxx Xxx|Undisclosed|Redact Redact|Undisclosed Undisclosed|Name Withheld Name Withheld|NAME REDACTED|REDACTED|Safety Personnel - Name Redacted|NAME WITHHELD|Exempt From Disclosure")
+
 CountyData <- CountyData %>%
-  filter(!grepl("Not Provided|Redacted Name Redacted Name|Redacted Redacted|REDACTED REDACTED|Xxx Xxx|Undisclosed|Redact Redact|Undisclosed Undisclosed|Name Withheld Name Withheld|NAME REDACTED|REDACTED|Safety Personnel - Name Redacted|NAME WITHHELD|Exempt From Disclosure",
-                `Employee Name`, ignore.case =TRUE)) %>% 
+  filter(!grepl(namesToRemove,
+                `Employee Name`, ignore.case = TRUE)) %>% 
   filter(`Total Pay & Benefits` > 0) %>%
   droplevels()
 
@@ -75,19 +82,15 @@ CountyData  %>% group_by(`Employee Name`) %>% summarise(count = n()) %>% arrange
 
 listOfNames <- babynames
 
- # some names repeat more than once so remove them
-
-with(listOfNames, table(name, sex, useNA = "ifany"))
-
 listOfNamesByGender <- listOfNames %>%
-  select( name, sex, n) %>% 
-  group_by (sex, name) %>% 
+  dplyr::select( name, sex, n) %>% 
+  group_by(sex, name) %>% 
   summarise(TotalCount = sum(n)) %>%
   spread(  sex, TotalCount ) %>%
   mutate(TotalCountAllYears =  rowSums(.[2:3], na.rm = TRUE),
          FemalePercent = F/TotalCountAllYears,
          MalePercent = M/TotalCountAllYears) %>%
-  select (name, FemalePercent, MalePercent)
+  dplyr::select(name, FemalePercent, MalePercent)
 
 # remove unnecessary data
 
@@ -100,7 +103,7 @@ CountyDataWithGender <- CountyData %>%
          name = ifelse(grepl(",", `Employee Name`), sub('.*,\\s*', '', `Employee Name`), cleanName),
          name =  word(name, 1),
          name = tolower(name),
-         name = gsub("\\b(\\w)",    "\\U\\1", name, perl=TRUE),
+         name = gsub("\\b(\\w)", "\\U\\1", name, perl = TRUE),
          name = gsub("[^[:alnum:] ]", "", name)) %>% # head() %>%
   as.data.frame() %>%
   left_join(listOfNamesByGender) %>%
@@ -118,14 +121,14 @@ MissingNames <- CountyDataWithGender %>%
   ungroup() %>%
   arrange(desc(count))
 
-rm(list= ls(pattern = "listOfNames"))
+rm(list = ls(pattern = "listOfNames"))
 
 # calc the median pay by county
 
 CountyDataWithGender <- CountyDataWithGender %>%
   group_by(Agency, Year) %>%
   mutate(medianPay = median(`Total Pay & Benefits`),
-         AboveOrBelowMedianPay = ifelse(`Total Pay & Benefits`>=  medianPay ,"above","below"))
+         AboveOrBelowMedianPay = ifelse(`Total Pay & Benefits` >=  medianPay ,"above","below"))
 
 ```
 
@@ -141,8 +144,8 @@ CountyDataWithGender %>%
   spread(FinalGender, count)
 
 testData <- CountyDataWithGender %>%
-  filter (FinalGender !="bothMissing") %>%
-  select(Agency, Year, FinalGender, AboveOrBelowMedianPay) %>%
+  filter(FinalGender != "bothMissing") %>%
+  dplyr::select(Agency, Year, FinalGender, AboveOrBelowMedianPay) %>%
   mutate(AgencyYear = paste0(Agency,"-",Year)) %>% droplevels()
 
 doExpectedValues = function(sel_name) {
@@ -155,12 +158,13 @@ doExpectedValues = function(sel_name) {
 testdataExpected <- lapply(unique(testData$AgencyYear), doExpectedValues)
 
 Category_names <- unique(testData$AgencyYear)
-# assign player names to list of tables
+
+# assign  names to list of tables
 names(testdataExpected) <- Category_names
 
 testdataExpectedFinal <- testdataExpected %>% # head(1000) %>%
   plyr::ldply(data.frame) %>%
-  select(AgencyYear = 1, above, below) %>%
+  dplyr::select(AgencyYear = 1, above, below) %>%
   mutate(FinalGender = rep(c("FemaleLikely","MaleLikely"), 150)) %>%
   gather(AboveOrBelowMedianPay, ExpectedCount, -c(AgencyYear, FinalGender))
 
@@ -173,22 +177,27 @@ doExpectedPValues = function(sel_name) {
 
 testDataPvalues <- lapply(unique(testData$AgencyYear), doExpectedPValues)
 
-# assign player names to list of tables
+# assign names to list of tables
 names(testDataPvalues) <- Category_names
 
 testDataPvaluesFinal <- testDataPvalues %>% # head(1000) %>%
   plyr::ldply(data.frame) %>%
-  select(AgencyYear = 1, pvalue = 2) # %>%
+  dplyr::select(AgencyYear = 1, pvalue = 2)  %>%
+  mutate( pvalue = ifelse(pvalue ==  0,
+                          paste0("**",formatC(pvalue, 1, width = 1),"**"),
+                          ifelse(pvalue > 0 & pvalue <= 0.05,
+                                 paste0("**",formatC(pvalue, 4),"**"),
+                                 formatC(pvalue, 4))))
   #mutate(pvalue = trunc(pvalue, 4))
 
 ```
 
 
 
-```{r table survivalFinalpander, include=TRUE}
+```{r tablePvalues2014ByCounty, include=TRUE}
 
 t <-  CountyDataWithGender %>%
-  filter (FinalGender !="bothMissing") %>%
+  filter(FinalGender != "bothMissing") %>%
   mutate(AgencyYear = paste0(Agency,"-",Year)) %>%
   group_by(AgencyYear, AboveOrBelowMedianPay, FinalGender) %>%
   summarise(ActualCount = n()) %>%
@@ -199,13 +208,10 @@ t <-  CountyDataWithGender %>%
   filter(Year == "2014",
          AboveOrBelowMedianPay == "above",
          FinalGender == "FemaleLikely") %>%
-  select(Agency,  ActualCount, ExpectedCount , pvalue) %>%
-   add_rownames( var = "ID") %>%
-  droplevels() %>%
-  mutate(pvalue = ifelse(pvalue <= 0.05,
-                         paste0("**",formatC(pvalue, 4),"**"),
-                                formatC(pvalue, 4)))
- 
+  dplyr::select(Agency,  ActualCount, ExpectedCount , pvalue) %>%
+  add_rownames( var = "ID") %>%
+  droplevels() 
+
 library(pander)
 
 panderOptions('digits', 1)
@@ -214,66 +220,68 @@ panderOptions('keep.trailing.zeros', TRUE)
 panderOptions('decimal.mark', ".")
 panderOptions('big.mark', ",")
 panderOptions('table.split.cells', c(35, 35, 10, 10, 10))
-#panderOptions("table.style", "grid") #emphasize.strong.rows(which(m$hp > 100))
-#panderOptions('emphasize.strong.rows', c(which(t$pvalue <= 0.05, arr.ind = TRUE)))
-#panderOptions('emphasize.cols', (which(t$pvalue <= 0.05, arr.ind = TRUE)))
 
 pander(t,
        split.table = Inf,
-       caption = "Expected and observed counts by gender for year 2014 by county")
+       caption = "Expected and observed counts for Females for year 2014 by county. Rows where the pvalue is highlighted show a statistical significant difference between pay rate and gender")
 
 ```
 
 
-```{r plotStrucChangeTest, fig.width = 6, fig.height = 9, fig.fullwidth = TRUE, fig.cap= "Axxxxe.", message = FALSE, warning = FALSE, include = TRUE, eval = TRUE}
+```{r plotTopCounties, fig.width = 6, fig.height = 9, fig.fullwidth = TRUE, fig.cap= "Top 10 counts by total employees broken down by expected and acutal employees above and below median pay by county and expected counts", message = FALSE, warning = FALSE, include = TRUE, eval = TRUE}
 
-## merge all the sets and put them on a nice looking table
-### plot the data too
+yearFilter = "2014"
+
+Top10ByYear2014 <- CountyDataWithGender %>%
+  filter(FinalGender != "bothMissing") %>%
+  mutate(AgencyYear = paste0(Agency,"-",Year)) %>%
+  group_by(AgencyYear) %>%
+  summarise(count = n()) %>%
+  ungroup() %>%
+  separate(AgencyYear, c("Agency", "Year"), "-") %>%
+  #group_by(Agency, Year) %>%
+  filter(Year == yearFilter) %>%
+  arrange(desc(count)) %>%
+  top_n(10)
 
 t <- CountyDataWithGender %>%
-  filter (FinalGender !="bothMissing") %>%
+  filter(FinalGender != "bothMissing") %>%
   mutate(AgencyYear = paste0(Agency,"-",Year)) %>%
   group_by(AgencyYear, AboveOrBelowMedianPay, FinalGender) %>%
   summarise(ActualCount = n()) %>%
   left_join(testdataExpectedFinal) %>%
   ungroup() %>%
   separate(AgencyYear, c("Agency", "Year"), "-") %>%
-  gather(Metric, value, -c(Agency, Year, AboveOrBelowMedianPay, FinalGender))
+  gather(Metric, value, -c(Agency, Year, AboveOrBelowMedianPay, FinalGender)) %>%
+ right_join(Top10ByYear2014)
 
 ggplot(t, aes(value, Metric)) +
   geom_point( aes(colour = FinalGender,
-                  shape = Year),
+                  shape = AboveOrBelowMedianPay),
               alpha = 3/4,
-              size = .5) + 
+              size = 1) + 
   #facet_wrap(~Agency, scales = "free_x") +
   facet_grid(Agency ~ ., scales = "free_x",  space = "free") + 
-  scale_x_continuous(trans=log_trans(), 
-                     breaks=c(200,2000,10000,20000),
+  scale_x_continuous(name = "Number of employees (log scale)",
+                     trans = log_trans(), 
+                     breaks = c(200,2000,10000,20000),
                      labels = comma_format()) +
-  theme(        axis.text.x  =element_text(size = 5, 
+  theme(        axis.text.x = element_text(size = 5, 
                                            angle = 00,
                                            color = "black", 
                                            hjust = 0),
-                axis.text.y  =element_text(size = 5, 
-                                           angle = 00,
-                                           color = "black", 
-                                           hjust = 0),
+                axis.text.y  = element_text(size = 5, 
+                                            angle = 00,
+                                            color = "black", 
+                                            hjust = 0),
                 strip.text.y = element_text(size = 5,
-                                            angle = 0))
-
-
- # facet_grid(Year  ~ Metric + Agency)
-
-
- # facet_wrap(~Agency, scales = "free_y") +
-  
-#  scale_colour_manual(
-#  values = c("8" = "red","4" = "blue","6" = "green"))
+                                            angle = 0),
+                legend.position = "bottom")
 
 
 ```
 
-```{r descriptionTable}
+```{r descriptionTable, eval = FALSE}
 
 library(Hmisc)
 
@@ -305,7 +313,7 @@ mylatex <- function (...) {
 
 
 
-```{r whole county vs target area table, results ='asis', message = FALSE, warning = FALSE, include=TRUE}
+```{r whole county vs target area table, results ='asis', message = FALSE, warning = FALSE, include=TRUE , eval = FALSE}
 
 # render the table
 
