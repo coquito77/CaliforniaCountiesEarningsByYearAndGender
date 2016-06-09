@@ -1,28 +1,45 @@
 ---
-title: "Untitled"
+title: "Earnings by California County Employees"
+subtitle: "An analysis of public available data"
 author: "Moises Evangelista"
-date: "June 1, 2016"
-output: pdf_document
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    fig_width: 7
+    fig_height: 9
+    fig_caption: true
+    fig_crop: false
+fontsize: 11pt
+header-includes:
+- \usepackage{hyperref, fancyhdr, pdflscape}
+- \hypersetup{colorlinks,urlcolor=blue}
+- \pagestyle{fancy}
+- \fancyhead[CO,CE]{\fontsize{10}{12} \selectfont Earnings by California County Employees}
 ---
 
 
-This report tries to mimic the report [County Pay Practices](https://www.auditor.ca.gov/pdfs/reports/2015-132.pdf)
+# Introduction
 
-Issues, a worker may show with two or more times if the worker moved from one position to another or from one department to another with the same title. Some workers change names and may also appear more than once, others leave the department in the middle of the year due to death, retirement, new job in the private sector, etc, while others may start a new job in after the start of the year because they are a new hire or returned to work after leaving. A way to mitiage this would be to add colums that show hours worked, rather than hours vacation, sick time, etc.
+This report tries to mimic the report titled [County Pay Practices](https://www.auditor.ca.gov/pdfs/reports/2015-132.pdf), Report 2015-132.  This report was crearted by the California State Auditor and it sheds light in the wage gap between females and male employees working employed by california counties.
+
+This report uses publicly available data to shed more light on the report created by the California State Auditor.  The data the data source for this report is from [transparentcalifornia.com](http://transparentcalifornia.com)
+
+\newpage
 
 ```{r setup, include=FALSE}
 
 rm(list=ls(all=TRUE)) #start with empty workspace
 
+startTime <- Sys.time() # start the clock
+
 knitr::opts_chunk$set(cache = TRUE, echo = FALSE, message = FALSE, warning = FALSE, include = FALSE)
 
+setwd("~/GitHub/Earnings-Public-Use-File-2006") # set the working directory
+list.files()
+
+# load("earningsData.RData")
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** b;utton a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
 ```{r loadpackages}
 
@@ -35,52 +52,70 @@ library(babynames)
 library(descr)
 library(ggplot2)
 library(scales)
-
+library(tm)
+library(pander)
 
 ```
 
 ```{r importdata, cache = TRUE}
 
+# set the years to download the data
 
-CountyData2012 <- fread("http://transparentcalifornia.com/export/2012-counties.csv",
-                    stringsAsFactors = TRUE)
+DaysSequence <- seq(as.Date("2013/1/1"), as.Date("2014/1/1"), "years")
 
-CountyData2013 <- fread("http://transparentcalifornia.com/export/2013-counties.csv",
-                    stringsAsFactors = TRUE)
+Years <- as.numeric(format(DaysSequence,"%Y"))
 
-CountyData2014 <- fread("http://transparentcalifornia.com/export/2014-counties.csv",
-                    stringsAsFactors = TRUE)
+n <- length(DaysSequence) 
 
-CountyData2015 <- fread("http://transparentcalifornia.com/export/2015-counties.csv",
-                    stringsAsFactors = TRUE)
+# pre-allocate list to fill
 
-CountyData <- rbind(CountyData2012,
-                    CountyData2013,
-                    CountyData2014,
-                    'fill' = TRUE) # County Data for 2015 seems incomplete now
-summary(CountyData)
+links  = ""
 
+# build the links
 
-```
+for(i in 1:n){
+  print(i) # keep track of what the function is up to
+  links[[i]] <- paste0("http://transparentcalifornia.com/export/",
+                       Years[i],
+                      "-counties.csv")
+}
 
-```{r cleanUpTheData}
+all_tables <- vector("list", length = (length(links)))
+
+# import the data
+
+for (i in 1:length(links)) {
+  # print(i)
+  # error handling - skips to next URL if it gets an error
+  result <- try(
+    # all_tables[[i]] <-  read.csv(links[i], 
+    all_tables[[i]] <-  data.table::fread(links[i], 
+                                 header = TRUE,
+                                 showProgress = FALSE)
+  ); if (class(result) == "try-error") next;
+}
+
+rm(result)
+
+# create one dataframe from the downloaded data
+
+CountyData <- plyr::ldply(all_tables, data.frame)
+
 # remove recods where the name is not provided
 
-namesToRemove <- c("Not Provided|Redacted Name Redacted Name|Redacted Redacted|REDACTED REDACTED|Xxx Xxx|Undisclosed|Redact Redact|Undisclosed Undisclosed|Name Withheld Name Withheld|NAME REDACTED|REDACTED|Safety Personnel - Name Redacted|NAME WITHHELD|Exempt From Disclosure")
+namesToRemove <- c("Not Provided|Redacted Name Redacted Name|Redacted Redacted|REDACTED REDACTED|Xxx Xxx|Undisclosed|Redact Redact|Undisclosed Undisclosed|Name Withheld Name Withheld|NAME REDACTED|REDACTED|Safety Personnel - Name Redacted|NAME WITHHELD|Exempt From Disclosure|Employee Name|Exempt from Discloser")
 
 CountyData <- CountyData %>%
   filter(!grepl(namesToRemove,
-                `Employee Name`, ignore.case = TRUE)) %>% 
-  filter(`Total Pay & Benefits` > 0) %>%
+                Employee.Name, ignore.case = TRUE)) %>% # remove names that are not 'names'
+  filter(Total.Pay...Benefits > 0) %>%                 # get only positive pay   
   droplevels()
 
 summary(CountyData)
 
-# check the names 
-
-CountyData  %>% group_by(`Employee Name`) %>% summarise(count = n()) %>% arrange(desc(count))
-
 listOfNames <- babynames
+
+# determine the proportion of male female names by name
 
 listOfNamesByGender <- listOfNames %>%
   dplyr::select( name, sex, n) %>% 
@@ -92,18 +127,25 @@ listOfNamesByGender <- listOfNames %>%
          MalePercent = M/TotalCountAllYears) %>%
   dplyr::select(name, FemalePercent, MalePercent)
 
-# remove unnecessary data
+listOfNamesByGender %>% filter(MalePercent <.5 &
+                                 MalePercent >.45)
 
-rm(list = ls(pattern = "201"))
+# remove Jr, sr. II, III, IV and 
+# determine names that are both male and female
 
-# now determine names that are both male and female
+listWordsToRemove <- c("sr", "jr","ii", "iii", "iv")
 
 CountyDataWithGender <- CountyData %>%
-  mutate(cleanName =  word(`Employee Name`, 1),
-         name = ifelse(grepl(",", `Employee Name`), sub('.*,\\s*', '', `Employee Name`), cleanName),
+  # filter(Employee.Name == "Sevilla Iii Conrado") %>%
+  mutate(CleanEmpName = tolower(Employee.Name),
+         CleanEmpName = removeWords(CleanEmpName, listWordsToRemove),
+         CleanEmpName = sub("\\.","", CleanEmpName) ,
+         CleanEmpName = gsub('\\b\\w{1,1}\\b','',CleanEmpName),   # remove one character letters
+         CleanEmpName = trimws(CleanEmpName),
+         name = ifelse(grepl(",", CleanEmpName), sub('.*,\\s*', '', CleanEmpName), CleanEmpName),
          name =  word(name, 1),
-         name = tolower(name),
-         name = gsub("\\b(\\w)", "\\U\\1", name, perl = TRUE),
+         # name = tolower(name),
+         name = gsub("\\b(\\w)", "\\U\\1", name, perl = TRUE),  # capitalize the fist name
          name = gsub("[^[:alnum:] ]", "", name)) %>% # head() %>%
   as.data.frame() %>%
   left_join(listOfNamesByGender) %>%
@@ -112,29 +154,147 @@ CountyDataWithGender <- CountyData %>%
                                      ifelse(!is.na(FemalePercent) & is.na( MalePercent),"FemaleLikely", 
                                             ifelse( FemalePercent > MalePercent, "FemaleLikely", "MaleLikely" )))))
 
+NamesUnmatched <- CountyDataWithGender %>%
+  filter(FinalGender == "bothMissing") %>%
+  group_by(name) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+
+set.seed(10)
+
+UnmatchedKernCounty <- CountyDataWithGender %>% filter(Agency == "Kern County",
+                                FinalGender == "bothMissing") %>%
+  select(Employee.Name, FinalGender ) %>%
+  sample_n (5) %>%
+  mutate(Type = "Unmatched Name")
+
+MatchedKernCounty <- CountyDataWithGender %>% filter(Agency == "Kern County",
+                                FinalGender != "bothMissing") %>%
+  select(Employee.Name, FinalGender ) %>%
+  sample_n (5) %>%
+  mutate(Type = "Matched Name") %>%
+  full_join(UnmatchedKernCounty)
+
+# save.image(file = "earningsData.RData")
+
+```
+
+
+```{r reviewCleanedData}
+
 # review names that are unknown
 
 MissingNames <- CountyDataWithGender %>% 
   filter(FinalGender == "bothMissing") %>%
-  group_by(Agency, `Employee Name`) %>%
+  group_by(Agency, Employee.Name, name) %>%
   summarise(count = n()) %>%
   ungroup() %>%
   arrange(desc(count))
 
+tableCounts <- with(CountyDataWithGender, table(Agency, FinalGender, useNA = "ifany"))
+
+tableCounts
+
+propTable <- prop.table(tableCounts, 1)
+
+t <- CountyDataWithGender %>% filter(Agency == "Kern County") %>%
+  group_by(FinalGender, Job.Title) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+
+# with(t, table(Job.Title, FinalGender))
+
 rm(list = ls(pattern = "listOfNames"))
 
+```
+
+\newpage
+
+
+# Empirical Analysis
+
+The data from transparentcalifornia.com was downloaded for years 2013 and  2014 (the data for year 2015 is incomplete as of `r Sys.Date()`). The data includes employee names but it lacks employee gender. To overcome the gender data not being included a processed was used to match the names to another list that is composed of names and gender. A list of names that includes gender was extracted from the R package `babynames`.  'The baby names list is composed from US baby names provided by the SSA. This package contains all names used for at least 5 children of either sex'. [see this more more information](https://cran.r-project.org/web/packages/babynames/babynames.pdf).
+
+The names from the county data were generally composed in one of two formats.  The first format was `FIRST LAST`, the second format was `LAST, FIRST`.
+
+The county data was processed and the first names extracted.  Some names are used by male and females almost equally e.g. Alexy or Adel. The data from the R package was summarized and names were given a proportion of usage e.g. Alexy was classified as female and as Adel. Some names are almost exclusively used by females e.g. Therese or Annabelle and some are almost exclusively used by males e.g. Rodrigo or Mauricio. The names from the county data was matched with the names list with fender proportion. After the matching processes some names were left unmatched e.g.Mcheko or SuiKwong.
+
+For this report the median was used because it is less prone to be skewed by total pay observations that are too high or too low.
+
+
+### Data issues
+
+This analysis uses each row as if it was a unique worker but this raises issues. Some workers may be employees in one department with a certain title e.g. Program Analyst and then promote to e.g. Information Systems Analyst.  In this situations the same worker may appear twice in the data for the same year.  In addition, some workers may start working for the county for part of the year due to being new hire or leaving county employment due to retirement, death, or employment in the private sector.
+
+Some salaries include back pay and settlement payments, which make total pay increase and thus skew the data.
+
+Suggestions to mitigate this situations and get a better idea of county pay is to include a unique identifier by worker (it does not have to be the employee number), and include the number of hours a worker was paid in the year. In addition, Kern County data was especially difficult to match.
+
+\footnotesize
+
+```{r tableMatchedRecordNames, include=TRUE}
+
+panderOptions('digits', 1)
+panderOptions('round', c(2,2,2,2))
+panderOptions('keep.trailing.zeros', TRUE)
+panderOptions('decimal.mark', ".")
+panderOptions('big.mark', ",")
+panderOptions('table.split.cells', c(35, 35, 10, 10, 10))
+
+pander(propTable,
+       split.table = Inf,
+       caption = "The table below shows the percent of names matched to males or females for years 2013 and 2014. Kern County has the highest percent of unmatched names because their name structure is in disarray")
+
+```
+
+\normalsize
+
+\newpage
+
+For this analysis the data from Kern County represented a major concern since it does not follow any of the two name formats used by the other counties. 
+
+```{r tableKernCountNamesMatchedSample, include=TRUE}
+
+panderOptions('table.alignment.default',
+     function(df) ifelse(sapply(df, is.numeric), 'right', 'left'))
+panderOptions('digits', 1)
+panderOptions('round', c(2,2,2,2))
+panderOptions('keep.trailing.zeros', TRUE)
+panderOptions('decimal.mark', ".")
+panderOptions('big.mark', ",")
+panderOptions('table.split.cells', c(10, 65, 55, 55))
+
+pander(MatchedKernCounty,
+       split.table = Inf,
+       caption = "Sample of five records that were matched and five records that were unmatched from Kern County data. For some records the names are scrabbled, first name appears first and sometimes it appears in the middle of the name, and commas are missing. In addition, Name initials and name suffix add to the complexity of Kern County data.")
+
+```
+
+
+
+
+```{r calMedianPay}
 # calc the median pay by county
 
 CountyDataWithGender <- CountyDataWithGender %>%
   group_by(Agency, Year) %>%
-  mutate(medianPay = median(`Total Pay & Benefits`),
-         AboveOrBelowMedianPay = ifelse(`Total Pay & Benefits` >=  medianPay ,"above","below"))
+  mutate(medianPay = median(Total.Pay...Benefits),  # this median is by county for all employees
+         AboveOrBelowMedianPay = ifelse(Total.Pay...Benefits >=  medianPay ,"above","below"))
+
+CountyDataWithGender <- CountyDataWithGender %>%
+  filter(FinalGender != "bothMissing") %>%
+  group_by(Agency, Year, FinalGender) %>%
+  mutate(medianPayByGender = median(Total.Pay...Benefits))  # this median is by county and gender
 
 ```
 
-## Including Plots
+\newpage
 
-You can also embed plots, for example:
+## Median pay 
+
+To measure the gender gap, it is useful to know the number of employees who are above and below the median by county. For this the median pay was extracted, rather than the average, by county and by by year. The records where then grouped into above or below the median and a [Chi-squared test](https://en.wikipedia.org/wiki/Chi-squared_test) was complete by county.  For most counties the number of records classified as female are above that what is expected.
+
+
 
 ```{r pressure, echo=FALSE}
 
@@ -144,9 +304,10 @@ CountyDataWithGender %>%
   spread(FinalGender, count)
 
 testData <- CountyDataWithGender %>%
-  filter(FinalGender != "bothMissing") %>%
   dplyr::select(Agency, Year, FinalGender, AboveOrBelowMedianPay) %>%
   mutate(AgencyYear = paste0(Agency,"-",Year)) %>% droplevels()
+
+# to chi square tests for each county and year
 
 doExpectedValues = function(sel_name) {
   dum = filter(testData, AgencyYear == sel_name) %>% droplevels()
@@ -165,7 +326,7 @@ names(testdataExpected) <- Category_names
 testdataExpectedFinal <- testdataExpected %>% # head(1000) %>%
   plyr::ldply(data.frame) %>%
   dplyr::select(AgencyYear = 1, above, below) %>%
-  mutate(FinalGender = rep(c("FemaleLikely","MaleLikely"), 150)) %>%
+  mutate(FinalGender = rep(c("FemaleLikely","MaleLikely"), length(Category_names))) %>%
   gather(AboveOrBelowMedianPay, ExpectedCount, -c(AgencyYear, FinalGender))
 
 doExpectedPValues = function(sel_name) {
@@ -193,11 +354,11 @@ testDataPvaluesFinal <- testDataPvalues %>% # head(1000) %>%
 ```
 
 
+\footnotesize
 
 ```{r tablePvalues2014ByCounty, include=TRUE}
 
 t <-  CountyDataWithGender %>%
-  filter(FinalGender != "bothMissing") %>%
   mutate(AgencyYear = paste0(Agency,"-",Year)) %>%
   group_by(AgencyYear, AboveOrBelowMedianPay, FinalGender) %>%
   summarise(ActualCount = n()) %>%
@@ -212,8 +373,6 @@ t <-  CountyDataWithGender %>%
   add_rownames( var = "ID") %>%
   droplevels() 
 
-library(pander)
-
 panderOptions('digits', 1)
 panderOptions('round', c(0,0,0,0))
 panderOptions('keep.trailing.zeros', TRUE)
@@ -223,12 +382,14 @@ panderOptions('table.split.cells', c(35, 35, 10, 10, 10))
 
 pander(t,
        split.table = Inf,
-       caption = "Expected and observed counts for Females for year 2014 by county. Rows where the pvalue is highlighted show a statistical significant difference between pay rate and gender")
+       caption = "Expected and observed females counts over the median pay by county in 2014. County where the p-value is highlighted show a statistical significant difference between expected and observed counts")
 
 ```
 
 
-```{r plotTopCounties, fig.width = 6, fig.height = 9, fig.fullwidth = TRUE, fig.cap= "Top 10 counts by total employees broken down by expected and acutal employees above and below median pay by county and expected counts", message = FALSE, warning = FALSE, include = TRUE, eval = TRUE}
+\normalsize
+
+```{r plotTopCounties, fig.width = 6, fig.height = 8, fig.fullwidth = TRUE, fig.cap= "Top 10 counties in 2014 (representing about 70% of total records) broken down by expected and actual counts of those above and below the median total pay.", message = FALSE, warning = FALSE, include = TRUE, eval = TRUE}
 
 yearFilter = "2014"
 
@@ -253,13 +414,13 @@ t <- CountyDataWithGender %>%
   ungroup() %>%
   separate(AgencyYear, c("Agency", "Year"), "-") %>%
   gather(Metric, value, -c(Agency, Year, AboveOrBelowMedianPay, FinalGender)) %>%
- right_join(Top10ByYear2014)
+  right_join(Top10ByYear2014)
 
 ggplot(t, aes(value, Metric)) +
   geom_point( aes(colour = FinalGender,
                   shape = AboveOrBelowMedianPay),
               alpha = 3/4,
-              size = 1) + 
+              size = 2) + 
   #facet_wrap(~Agency, scales = "free_x") +
   facet_grid(Agency ~ ., scales = "free_x",  space = "free") + 
   scale_x_continuous(name = "Number of employees (log scale)",
@@ -274,12 +435,49 @@ ggplot(t, aes(value, Metric)) +
                                             angle = 00,
                                             color = "black", 
                                             hjust = 0),
-                strip.text.y = element_text(size = 5,
+                strip.text.y = element_text(size = 10,
                                             angle = 0),
-                legend.position = "bottom")
-
+                legend.position = "top",
+                legend.margin = unit(0, "cm"),
+                plot.margin = unit(c(0,0,0,0), "cm"))   #T, R, B, L)
 
 ```
+
+\newpage
+
+\footnotesize
+
+```{r FemalePayAsPercentOfMale, include=TRUE}
+
+yearFilter = "2014"
+
+WageRatios <- CountyDataWithGender %>%
+  filter(Year == yearFilter) %>%
+  select(Agency, FinalGender, medianPayByGender) %>%
+  unique () %>%
+  group_by(Agency) %>%
+  spread(FinalGender, medianPayByGender) %>%
+  mutate(FamaleToMaleRatioWage = FemaleLikely / MaleLikely,
+         FamaleToMaleRatioWage = ifelse( FamaleToMaleRatioWage >=.9,
+                        paste0("**",formatC(FamaleToMaleRatioWage, 4),"**"),
+                        formatC(FamaleToMaleRatioWage, 4)
+                        )) %>%
+  select(Agency:FamaleToMaleRatioWage)
+
+panderOptions('digits', c(1,2,2,2))
+panderOptions('round', c(0,0,0,0,0))
+panderOptions('keep.trailing.zeros', TRUE)
+panderOptions('decimal.mark', ".")
+panderOptions('big.mark', ",")
+panderOptions('table.split.cells', c(35, 35, 35, 15, 15,10))
+
+pander(WageRatios,
+       split.table = Inf,
+       caption = "Wage ratio by county for 2014 year. Some couties ratio is close or over to 1 (highlighted in column 'FamaleToMaleRatioWage')")
+
+```
+
+\normalsize
 
 ```{r descriptionTable, eval = FALSE}
 
@@ -288,10 +486,14 @@ library(Hmisc)
 t <- CountyDataWithGender %>%
     filter (FinalGender !="bothMissing",
             Year == 2014) %>%
-  mutate(AboveOrBelowMedianPay = as.factor(AboveOrBelowMedianPay)) %>% 
-  droplevels
+  ungroup () %>%
+  mutate(AboveOrBelowMedianPay = as.factor(AboveOrBelowMedianPay),
+         Agency = as.factor(Agency)) %>% 
+  # select(Agency, TotalPay = Total.Pay...Benefits ) %>%
+  droplevels () #%>%
+  # sample_n(50000)
 
-DescTable <-  summary(AboveOrBelowMedianPay ~ Agency,
+DescTable <-  summary(Agency ~ Total.Pay...Benefits,
                       data = t, 
                       method="reverse", 
                       test = T, 
@@ -311,9 +513,131 @@ mylatex <- function (...) {
 ```
 
 
+```{r calculatePayRaises}
+# select names that repeat once per year
+# spread the data
+# calc percent incrase
 
 
-```{r whole county vs target area table, results ='asis', message = FALSE, warning = FALSE, include=TRUE , eval = FALSE}
+
+```
+
+```{r plotDensityHistogram, fig.width = 7, fig.height = 9,  eval=TRUE, include=TRUE, fig.cap= "Top 10 counties in 2014 (representing about 70% of total records) broken down gender and county. It excludes records with over one million or less than 100 dollars total pay.", message = FALSE, warning = FALSE, include=TRUE} 
+
+yearFilter = "2014"
+
+Top10ByYear2014 <- CountyDataWithGender %>%
+  filter(FinalGender != "bothMissing") %>%
+  mutate(AgencyYear = paste0(Agency,"-",Year)) %>%
+  group_by(AgencyYear) %>%
+  summarise(count = n()) %>%
+  ungroup() %>%
+  separate(AgencyYear, c("Agency", "Year"), "-") %>%
+  #group_by(Agency, Year) %>%
+  filter(Year == yearFilter) %>%
+  arrange(desc(count)) %>%
+  top_n(10)
+
+t <- CountyDataWithGender %>%
+  filter(FinalGender != "bothMissing",
+         Total.Pay...Benefits < 1e+6 &
+           Total.Pay...Benefits > 100) %>%  # there is a person who makes more than one million
+  ungroup() %>%
+  select(-Year) %>%
+  right_join(Top10ByYear2014) %>%
+  dplyr::select(Agency, Total.Pay...Benefits,Year, FinalGender) %>%
+  filter(Year == yearFilter)
+
+MediansByCountyAndGender <-  t %>% group_by(Agency, FinalGender) %>%
+  summarise(median = median(Total.Pay...Benefits)) %>%
+  mutate(median = round(median,0))
+
+#ggplot(t) + 
+#geom_histogram(mapping = aes(x = Total.Pay...Benefits))  +
+
+ggplot(t, aes(Total.Pay...Benefits, ..count.., fill = FinalGender)) +
+  geom_density(position = "stack", size = .25, colour = "black") +
+  facet_grid(Agency  ~ FinalGender) +
+  geom_vline(data = MediansByCountyAndGender, aes(xintercept=median),
+             #alpha = 1/2,
+             colour = "orange") +
+  geom_text(data = MediansByCountyAndGender, aes(x = median - 16000, y = .7,
+                                                 label = paste("Median Total Earnings \n",
+                                                               prettyNum(median, big.mark=",")), sep = " "),
+            #round(median,1)), 
+            size=1, colour="orange", angle = 90) +
+  scale_y_continuous(name = "Density estimation") +
+  scale_x_continuous(name = "Total Earnings (thousands)",
+                     breaks = seq(20000, 900000, 150000),
+                     #labels = scales::comma) +
+                     labels = c("20", "170", "320", "470", "620", "770")) + 
+  # scale_y_continuous(expand = c(0.1, 0)) +
+  theme(strip.text.y = element_text(angle = 0),
+        axis.text.x = element_text(size = 5, 
+                                   angle = 00,
+                                   color = "black", 
+                                   hjust = 0),
+        axis.text.y  = element_text(size = 5, 
+                                    angle = 00,
+                                    color = "black", 
+                                    hjust = 0),
+        strip.text.y = element_text(size = 5,
+                                    angle = 0),
+        legend.position = "top",
+        legend.margin = unit(0, "cm"),
+        plot.margin = unit(c(0,0,0,0), "cm"))   #T, R, B, L))
+
+
+
+```
+
+```{r plotDensityHistogramFill, fig.width = 6, fig.height = 8,  eval=TRUE, include=TRUE, fig.cap= "Tectonic changes are needed to close the gap between total earnings between males and females. For Ventura County, the highest paid records are female in 2014.", message = FALSE, warning = FALSE, include=TRUE} 
+
+labelColors <- ifelse( MediansByCountyAndGender$FinalGender == "FemaleLikely",
+                       "#af8dc3", "#7fbf7b")
+
+labelGender <- paste( MediansByCountyAndGender$FinalGender, "Median",
+                      prettyNum(MediansByCountyAndGender$median, big.mark=","), 
+                      sep = " ")
+
+ggplot(t, aes(Total.Pay...Benefits, ..count.., fill = FinalGender)) +
+  geom_density(position = "fill", size = .01, colour = "gray") +
+  facet_wrap(~Agency , ncol = 2) +
+  geom_vline(data = MediansByCountyAndGender, aes(xintercept=median),
+              #alpha = 1/2,
+             colour = labelColors) +
+  geom_text(data = MediansByCountyAndGender, aes(x = median - 12000, y = .5,
+                                                 #label = prettyNum(median, big.mark=",")),
+                                                 label = labelGender),
+                        #round(median,1)), 
+            size = 1, angle = 90, colour = labelColors) +
+  scale_x_continuous(name = "Total Earnings",
+                     breaks = seq(20000, 900000, 150000),
+                     labels = scales::comma) +
+  # scale_y_continuous(expand = c(0.1, 0)) +
+  theme(strip.text.y = element_text(angle = 0),
+        axis.text.x = element_text(size = 5, 
+                                   angle = 00,
+                                   color = "black", 
+                                   hjust = 0),
+        axis.text.y  = element_text(size = 5, 
+                                    angle = 00,
+                                    color = "black", 
+                                    hjust = 0),
+        strip.text.y = element_text(size = 5,
+                                    angle = 0),
+        legend.position = "top",
+        legend.margin = unit(0, "cm"),
+        plot.margin = unit(c(0,0,0,0), "cm"))   #T, R, B, L))
+
+
+
+```
+
+\newpage
+\begin{landscape}
+
+```{r whole county vs target area table, results ='asis', message = FALSE, warning = FALSE, eval = FALSE, include=FALSE}
 
 # render the table
 
@@ -323,7 +647,7 @@ mylatex (DescTable,
          npct ='numerator', 
          npct.size = "footnotesize", 
          what=c('%'), 
-         landscape = FALSE, 
+         #landscape = TRUE, 
          file = "", 
          long = T, 
          middle.bold=TRUE, 
@@ -332,13 +656,14 @@ mylatex (DescTable,
          label = "tbl:descTable1",  
          prmsd = TRUE,  
          size="small", 
+         width.cutoff = 
          caption = "Descriptive statistics by required course status", 
          caption.loc='bottom',
          where="!htbp") # col.just=c("l", "p{3in}")
 
 
 ```
-
+\end{landscape}
 
 ```{r eval= FALSE}
 
@@ -398,6 +723,15 @@ ggMMplot(diamonds$cut, diamonds$clarity)
 
 
 
+````
+
+------
+
+```{r get the completion time, cache= FALSE}
+# get the time
+endTime <- Sys.time()
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+The analysis was completed on `r format(Sys.time(), "%A %b %d %X %Y")
+` in `r round(difftime(endTime, startTime , units = c( "secs")),0)` seconds. 
