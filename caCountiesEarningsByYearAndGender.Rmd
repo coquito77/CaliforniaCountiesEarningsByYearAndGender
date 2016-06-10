@@ -481,48 +481,6 @@ pander(WageRatios,
 
 \normalsize
 
-```{r descriptionTable, eval = FALSE}
-
-library(Hmisc)
-
-t <- CountyDataWithGender %>%
-    filter (FinalGender !="bothMissing",
-            Year == 2014) %>%
-  ungroup () %>%
-  mutate(AboveOrBelowMedianPay = as.factor(AboveOrBelowMedianPay),
-         Agency = as.factor(Agency)) %>% 
-  # select(Agency, TotalPay = Total.Pay...Benefits ) %>%
-  droplevels () #%>%
-  # sample_n(50000)
-
-DescTable <-  summary(Agency ~ Total.Pay...Benefits,
-                      data = t, 
-                      method="reverse", 
-                      test = T, 
-                      continuous = 0)
-
-# fuction to take the first row of comment from the latex output
-
-mylatex <- function (...) {
-  o <- capture.output(latex(...))
-  # this will strip /all/ line-only comments; or if you're only
-  #  interested in stripping the first such comment you could
-  #  adjust accordingly
-  o <- grep('^%', o, inv=T, value=T)
-  cat(o, sep='\n')
-  }
-
-```
-
-
-```{r calculatePayRaises}
-# select names that repeat once per year
-# spread the data
-# calc percent incrase
-
-
-
-```
 
 ```{r plotDensityHistogram, fig.width = 7, fig.height = 9,  eval=TRUE, include=TRUE, fig.cap= "Top 10 counties in 2014 (representing about 70% of total records) broken down gender and county. It excludes records with over one million or less than 100 dollars total pay.", message = FALSE, warning = FALSE, include=TRUE} 
 
@@ -593,19 +551,19 @@ ggplot(t, aes(Total.Pay...Benefits, ..count.., fill = FinalGender)) +
 
 ```
 
-```{r plotDensityHistogramFill, fig.width = 6, fig.height = 8,  eval=TRUE, include=TRUE, fig.cap= "Tectonic changes are needed to close the gap between total earnings between males and females. For Ventura County, the highest paid records are female in 2014.", message = FALSE, warning = FALSE, include=TRUE} 
+```{r plotDensityHistogramFill, fig.width = 6, fig.height = 8,  eval=TRUE, include=TRUE, fig.cap= "Tectonic changes are needed to close the gap between total earnings between males and females. For Riverside and San Diego Counties, the highest paid records are female in 2014.", message = FALSE, warning = FALSE, include=TRUE} 
 
 labelColors <- ifelse( MediansByCountyAndGender$FinalGender == "FemaleLikely",
                        "#af8dc3", "#7fbf7b")
 
 labelGender <- paste( MediansByCountyAndGender$FinalGender, "Median",
-                      prettyNum(MediansByCountyAndGender$median, big.mark=","), 
+                      prettyNum(MediansByCountyAndGender$median, big.mark = ","), 
                       sep = " ")
 
 ggplot(t, aes(Total.Pay...Benefits, ..count.., fill = FinalGender)) +
   geom_density(position = "fill", size = .01, colour = "gray") +
   facet_wrap(~Agency , ncol = 2) +
-  geom_vline(data = MediansByCountyAndGender, aes(xintercept=median),
+  geom_vline(data = MediansByCountyAndGender, aes(xintercept = median),
              #alpha = 1/2,
              colour = labelColors) +
   geom_text(data = MediansByCountyAndGender, aes(x = median - 12000, y = .5,
@@ -638,34 +596,166 @@ ggplot(t, aes(Total.Pay...Benefits, ..count.., fill = FinalGender)) +
 ```
 
 \newpage
-\begin{landscape}
 
-```{r whole county vs target area table, results ='asis', message = FALSE, warning = FALSE, eval = FALSE, include=FALSE}
 
-# render the table
+```{r descriptionTable, eval = TRUE}
 
-options(digits=1)
-mylatex (DescTable, 
-         exclude1=FALSE, 
-         npct ='numerator', 
-         npct.size = "footnotesize", 
-         what=c('%'), 
-         #landscape = TRUE, 
-         file = "", 
-         long = T, 
-         middle.bold=TRUE, 
-         longtable = FALSE,
-         overall=TRUE, 
-         label = "tbl:descTable1",  
-         prmsd = TRUE,  
-         size="small", 
-         width.cutoff = 
-         caption = "Descriptive statistics by required course status", 
-         caption.loc='bottom',
-         where="!htbp") # col.just=c("l", "p{3in}")
+library(Hmisc)
+
+t <- CountyDataWithGender %>%
+  # filter (FinalGender !="bothMissing",
+  #        Year == 2014) %>%
+  ungroup() %>%
+  mutate(AboveOrBelowMedianPay = as.factor(AboveOrBelowMedianPay),
+         Agency = as.factor(Agency),
+         Year = as.factor(Year),
+         FinalGender = as.factor(FinalGender),
+         `Total Earnings` = Total.Pay...Benefits) %>% 
+  # select(Agency, TotalPay = Total.Pay...Benefits ) %>%
+  droplevels() #%>%
+# sample_n(50000)
+
+DescTableAll <-  summary(Year   ~ FinalGender + `Total Earnings`,
+                      data = t, 
+                      method = "reverse", 
+                      test = T, 
+                      continuous = 0)
+
+
+
+
+DescTableMales <-  summary(Year   ~ `Total Earnings`,
+                      data = t, 
+                      subset = FinalGender == "MaleLikely",
+                      method = "reverse", 
+                      test = T, 
+                      continuous = 0)
+
+
+DescTableFemales <-  summary(Year   ~ `Total Earnings`,
+                      data = t, 
+                      subset = FinalGender == "FemaleLikely",
+                      method = "reverse", 
+                      test = T, 
+                      continuous = 0)
+
+
+# fuction to take the first row of comment from the latex output
+
+mylatex <- function(...) {
+  o <- capture.output(latex(...))
+  # this will strip /all/ line-only comments; or if you're only
+  #  interested in stripping the first such comment you could
+  #  adjust accordingly
+  o <- grep('^%', o, inv = T, value = T)
+  cat(o, sep = '\n')
+  }
+
+```
+
+
+```{r calculatePayRaises}
+# select names that repeat once per year
+# spread the data
+# calc percent incrase
+
 
 
 ```
+
+\begin{landscape}
+
+
+```{r whole county vs target area table, results ='asis', message = FALSE, warning = FALSE, eval = TRUE, include = TRUE}
+
+# render the table
+options(scipen = 999)
+
+options(digits = 1)
+mylatex(DescTableAll, 
+         exclude1 = FALSE, 
+         npct = 'numerator', 
+         npct.size = "footnotesize", 
+         what = c('%'), 
+         #landscape = TRUE, 
+         file = "", 
+         long = T, 
+         middle.bold = TRUE, 
+         longtable = FALSE,
+         overall = TRUE, 
+         label = "tbl:descTable1",  
+         prmsd = TRUE,  
+         size = "small", 
+         #width.cutoff = 
+         caption = "Descriptive statistics by year", 
+         caption.loc = 'top',
+         where = "!htbp") # col.just=c("l", "p{3in}")
+
+```
+
+\vspace{10mm} %10mm vertical space
+
+```{r TotalEarningsByMalesAndYear, results ='asis', message = FALSE, warning = FALSE, eval = TRUE, include = TRUE}
+
+# render the table
+options(scipen = 999)
+
+options(digits = 1)
+mylatex(DescTableMales, 
+        exclude1 = FALSE, 
+        npct = 'numerator', 
+        npct.size = "footnotesize", 
+        what = c('%'), 
+        #landscape = TRUE, 
+        file = "", 
+        long = T, 
+        middle.bold = TRUE, 
+        longtable = FALSE,
+        overall = TRUE, 
+        label = "tbl:descTable1",  
+        prmsd = TRUE,  
+        size = "small", 
+        #width.cutoff = 
+        caption = "Descriptive statistics by year for likely males only.", 
+        caption.loc = 'top',
+        where = "!htbp") # col.just=c("l", "p{3in}")
+
+
+```
+
+\vspace{10mm} %10mm vertical space
+
+
+```{r TotalEarningsByFemalesAndYear, results ='asis', message = FALSE, warning = FALSE, eval = TRUE, include = TRUE}
+
+# render the table
+options(scipen = 999)
+
+options(digits = 1)
+mylatex(DescTableFemales, 
+         exclude1 = FALSE, 
+         npct = 'numerator', 
+         npct.size = "footnotesize", 
+         what = c('%'), 
+         #landscape = TRUE, 
+         file = "", 
+         long = T, 
+         middle.bold = TRUE, 
+         longtable = FALSE,
+         overall = TRUE, 
+         label = "tbl:descTable1",  
+         prmsd = TRUE,  
+         size = "small", 
+         #width.cutoff = 
+         caption = "Descriptive statistics by year for likely females only.", 
+         caption.loc = 'top',
+         where = "!htbp") # col.just=c("l", "p{3in}")
+
+
+```
+
+
+
 \end{landscape}
 
 ```{r eval= FALSE}
