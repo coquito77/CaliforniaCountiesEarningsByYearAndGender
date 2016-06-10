@@ -758,6 +758,15 @@ mylatex(DescTableFemales,
 
 \end{landscape}
 
+
+```{r TODO, eval= FALSE}
+
+# estimate the age of each person using the name
+# http://fivethirtyeight.com/features/how-to-tell-someones-age-when-all-you-know-is-her-name/
+
+
+```
+
 ```{r eval= FALSE}
 
 # plot something like this
