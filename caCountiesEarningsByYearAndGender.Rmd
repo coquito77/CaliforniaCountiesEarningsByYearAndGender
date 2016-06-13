@@ -20,7 +20,7 @@ header-includes:
 
 # Introduction
 
-This report tries to mimic the report titled [County Pay Practices](https://www.auditor.ca.gov/pdfs/reports/2015-132.pdf), Report 2015-132. County Pay Practices report was created by the California State Auditor and it sheds light in the wage gap between females and male employees employed by california counties.
+This report tries to mimic the report titled [County Pay Practices](https://www.auditor.ca.gov/pdfs/reports/2015-132.pdf), Report 2015-132. County Pay Practices report was created by the California State Auditor and it sheds light in the wage gap between females and male employees employed by California counties.
 
 This report uses publicly available data to shed more light on the report created by the California State Auditor.  The data the data source for this report is from [transparentcalifornia.com](http://transparentcalifornia.com)
 
@@ -217,18 +217,20 @@ The data from transparentcalifornia.com was downloaded for years 2013 and  2014 
 
 The names from the county data were generally composed in one of two formats.  The first format was `FIRST LAST`, the second format was `LAST, FIRST`.
 
-The county data was processed and the first names extracted.  Some names are used by male and females almost equally e.g. Alexy or Adel. The data from the R package was summarized and names were given a proportion of usage e.g. Alexy was classified as female and as was Adel. Some names are almost exclusively used by females e.g. Therese or Annabelle and some are almost exclusively used by males e.g. Rodrigo or Mauricio. Names from the county data were match with the names and the final gender was selected from the names hightest proporition. After the name matching processes some names were left unmatched e.g.Mcheko or SuiKwong.
+The county data was processed by extracting the first names for each record. The data from the R package was summarized and names were given a proportion of usage e.g. Alexy was classified as female and as was Adel. Some names are almost exclusively used by females e.g. Therese or Annabelle and some are almost exclusively used by males e.g. Rodrigo or Mauricio. Some names are used by male and females almost equally e.g. Alexy or Adel. 
 
-For this report the median was used because it is less prone to be skewed by total pay observations that are too high or too low especially since the total earnings have long tails e.i. some records have cents and some records have over a million of total earnings.
+Names from the county data were matched with the list of names with gender and the likely gender was then selected for each name. After the name matching processes some names were left unmatched e.g.Mcheko or SuiKwong.
+
+Also, For this report the median was used because it is less prone to be skewed by total pay observations that are too high or too low especially since the total earnings have long tails e.i. some records have cents and some records have over a million of total earnings.
 
 
 ### Data issues
 
-This analysis uses each row as if it was a unique worker and this method this creates some issues. Some workers may be employees in one department with a certain title e.g. Program Analyst and then promote another title within the department to e.g. Information Systems Analyst.  In this situations the same worker may appear twice in the data in the same year.  In addition, some workers may start working for the county for part of the year due to being new hire or other reasons and some workers may leave county employment due to retirement, death, or employment in the private sector. This situations will create duplicate persons.
+This analysis uses each row as if it was a unique worker and this method this creates some issues. Some workers may be employees in one department with a certain title e.g. Program Analyst and then promote to another title within the department e.g. Information Systems Analyst.  In this situations the same worker may appear twice in the data in the same year.  In addition, some workers may start working for the county for part of the year due to being a new hire or leaving county employment due to retirement, death, or employment in the private sector. This situations may impact the wages per employee.
 
-Some salaries include back pay and court settlement payments, which make total pay increase and thus skew the data.
+Some salaries include back pay and court settlement payments, which make total pay increase and thus skew the data for some records.
 
-Suggestions to mitigate this situations and get a better idea of county pay is to include a unique identifier by worker (it does not have to be the employee number), and include the number of hours a worker was paid in the year and separate the payments due to court settlements. In addition, Kern County data was especially difficult to match.
+Suggestions to mitigate these situations and get a better idea of county pay is to include a unique identifier by worker (it does not have to be the employee number), and include the number of hours a worker was paid in the year and separate the payments due to court settlements. In addition, the names to have a consistent format either first name first or first name after a comman.
 
 \footnotesize
 
@@ -294,7 +296,7 @@ CountyDataWithGender <- CountyDataWithGender %>%
 
 ## Median pay 
 
-To measure the gender gap, it is useful to know the number of employees who are above and below the median by county. For this the median pay was extracted, rather than the average, by county and by year. The records where then grouped into above or below the median and a [Chi-squared test](https://en.wikipedia.org/wiki/Chi-squared_test) was complete by county.  For most counties the number of records classified as female are above the median is lower that what is expected.
+To measure the gap in pay by gender, it is useful to know the number of employees who are above and below the median for each county. So the median pay was extracted, rather than the average, by county and by year. The records where then grouped into above or below the median and a [Chi-squared test](https://en.wikipedia.org/wiki/Chi-squared_test) was complete by county.  For most counties the number of records classified as female and that are above the median is lower that what is expected and the difference is statistically significant (it's unlikely that occurred by chance).
 
 
 
@@ -475,7 +477,7 @@ panderOptions('table.split.cells', c(35, 35, 35, 15, 15,10))
 
 pander(WageRatios,
        split.table = Inf,
-       caption = "Wage ratio by county for 2014 year. Some couties ratio is close or over to 1 (highlighted in column 'FamaleToMaleRatioWage')")
+       caption = "Wage ratio by county for 2014, Merced and Lassen counties ratio is over 1. Pay ratios for counties where the ratio is close or over 1 are in bold font in column 'FamaleToMaleRatioWage'.")
 
 ```
 
