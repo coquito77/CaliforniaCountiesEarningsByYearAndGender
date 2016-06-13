@@ -1,6 +1,6 @@
 ---
 title: "Earnings by California County Employees"
-subtitle: "An analysis of public available data"
+subtitle: "An analysis of publicly available data"
 author: "Moises Evangelista"
 date: "`r Sys.Date()`"
 output:
