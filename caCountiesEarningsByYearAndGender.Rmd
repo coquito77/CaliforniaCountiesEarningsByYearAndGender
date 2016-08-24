@@ -766,6 +766,102 @@ mylatex(DescTableFemales,
 # estimate the age of each person using the name
 # http://fivethirtyeight.com/features/how-to-tell-someones-age-when-all-you-know-is-her-name/
 
+ListOfFirstNames <- CountyDataWithGender %>% ungroup() %>%
+  dplyr::select(name, FinalGender) %>% unique %>%
+  mutate(sex = ifelse(FinalGender == "FemaleLikely","F","M")) %>%
+  dplyr::select(name, sex) %>%
+  inner_join(babynames) %>%
+  mutate(name = as.factor(as.character(name)),
+         sex  = as.factor(as.character(sex ))) %>%
+  filter(name == "Moises") %>% droplevels()
+
+summary(ListOfFirstNames)
+
+head(ListOfFirstNames)
+
+head(births)
+
+# create a range of years from 1900 to 2016
+
+yearsSeq <- data.frame(AgeYear =c( rep(seq(1900, 2016, by=1), 116))) 
+
+tst <- ListOfFirstNames %>% 
+  dplyr::select (name, year, n, sex) %>%
+  mutate(decade = year - (year %% 10)) %>% filter(year >= 1900)
+
+ListOfFirstNames %>% ggplot( aes(x= year, y = n)) +
+   geom_bar(stat="identity")
+
+merge(yearsSeq,tst ,all=TRUE) %>% distinct() -> mergedData
+
+
+mergedData <- mergedData %>% mutate(Age = AgeYear - year) %>% filter(Age > -1)
+
+tst %>% ggplot( aes(x= year, y = n)) +
+   geom_bar(stat="identity")
+
+
+## count how many per year
+## count how many died per year
+## somehow calc the median age
+
+lifetables <- lifetables
+head(lifetables)
+summary(lifetables)
+
+# Usage
+# 
+# lifetables
+# Format
+# 
+# A data frame with nine variables:
+# 
+# x = age in years
+# 
+# qx = probability of death at age x
+# 
+# lx = number of survivors, of birth cohort of 100,000, at next integral age
+# 
+# dx = number of deaths that would occur between integral ages
+# 
+# Lx = Number of person-years lived between x and x+1
+# 
+# Tx = Total number of person-years lived beyond age x
+# 
+# ex = Average number of years of life remaining for members of cohort alive at age x
+# 
+# sex = Sex
+# 
+# year = Year
+
+
+# join the names to the lifetables
+
+t <- mergedData %>% left_join(lifetables,
+                   by = c("decade" = "year",
+                          "sex" = "sex"
+                          )) %>% distinct() %>% filter(Age  == x)
+
+year2016 <- t %>% filter(AgeYear == 2016)
+
+
+res25 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.25)
+
+res25
+
+res50 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.5)
+
+res50
+
+
+res75 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.75)
+
+res75
+
+
+xm <- weighted.mean(year2016$Age,year2016$lx)
+xm
+
 
 ```
 
