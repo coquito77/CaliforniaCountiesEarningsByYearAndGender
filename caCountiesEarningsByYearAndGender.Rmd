@@ -34,7 +34,7 @@ startTime <- Sys.time() # start the clock
 
 knitr::opts_chunk$set(cache = TRUE, echo = FALSE, message = FALSE, warning = FALSE, include = FALSE)
 
-setwd("~/GitHub/Earnings-Public-Use-File-2006") # set the working directory
+setwd("~/GitHub/CaliforniaCountiesEarningsByYearAndGender") # set the working directory
 list.files()
 
 # load("earningsData.RData")
