@@ -553,7 +553,7 @@ ggplot(t, aes(Total.Pay...Benefits, ..count.., fill = FinalGender)) +
 
 ```
 
-```{r plotDensityHistogramFill, fig.width = 6, fig.height = 8,  eval=TRUE, include=TRUE, fig.cap= "Tectonic changes are needed to close the gap between total earnings between males and females. For Riverside and San Diego Counties, the highest paid records are female in 2014.", message = FALSE, warning = FALSE, include=TRUE} 
+```{r plotDensityHistogramFill, fig.width = 6, fig.height = 8,  eval=TRUE, fig.cap= "Tectonic changes are needed to close the gap between total earnings between males and females. For Riverside and San Diego Counties, the highest paid records are female in 2014.", message = FALSE, warning = FALSE, include=TRUE} 
 
 labelColors <- ifelse( MediansByCountyAndGender$FinalGender == "FemaleLikely",
                        "#af8dc3", "#7fbf7b")
@@ -759,55 +759,185 @@ mylatex(DescTableFemales,
 
 
 \end{landscape}
+\newpage
 
 
-```{r TODO, eval= FALSE}
+```{r calAgeByFirstName, eval= TRUE}
 
 # estimate the age of each person using the name
 # http://fivethirtyeight.com/features/how-to-tell-someones-age-when-all-you-know-is-her-name/
 
 ListOfFirstNames <- CountyDataWithGender %>% ungroup() %>%
+  #inner_join(Top10ByYear2014, by = "Agency") %>%
   dplyr::select(name, FinalGender) %>% unique %>%
   mutate(sex = ifelse(FinalGender == "FemaleLikely","F","M")) %>%
   dplyr::select(name, sex) %>%
   inner_join(babynames) %>%
   mutate(name = as.factor(as.character(name)),
          sex  = as.factor(as.character(sex ))) %>%
-  filter(name == "Moises") %>% droplevels()
+  # filter(name == "Moises") %>%
+  filter(year >= 2016-70,   # filter for persons between 70 and 16 years 'working age' as of 2016
+         year <= 2016-16) %>% distinct() %>%
+  droplevels()
 
 summary(ListOfFirstNames)
 
 head(ListOfFirstNames)
 
-head(births)
-
 # create a range of years from 1900 to 2016
 
-yearsSeq <- data.frame(AgeYear =c( rep(seq(1900, 2016, by=1), 116))) 
+yearsSeq <- data.frame(AgeYear =c( seq(1900, 2016, by=1))) 
 
 tst <- ListOfFirstNames %>% 
   dplyr::select (name, year, n, sex) %>%
-  mutate(decade = year - (year %% 10)) %>% filter(year >= 1900)
+  mutate(decade = year - (year %% 10)) %>% 
+  filter(year >= 1900)
 
-ListOfFirstNames %>% ggplot( aes(x= year, y = n)) +
+lifetables <- lifetables 
+head(lifetables)
+summary(lifetables)
+
+ListOfFirstNames %>% filter(name == "Moises") %>% ggplot( aes(x= year, y = n)) +
    geom_bar(stat="identity")
 
-merge(yearsSeq,tst ,all=TRUE) %>% distinct() -> mergedData
+test1 <- expand.grid(AgeYear= yearsSeq$AgeYear,
+                    year = ListOfFirstNames$year)  %>% distinct() 
 
+# get the object sizes 
+for (thing in ls()) {
+    message(thing)
+    print(object.size(get(thing)), units='auto')
+    }
 
-mergedData <- mergedData %>% mutate(Age = AgeYear - year) %>% filter(Age > -1)
+# remove data that is not longer necessary
 
-tst %>% ggplot( aes(x= year, y = n)) +
-   geom_bar(stat="identity")
+rm(list=setdiff(ls(), c("startTime",
+                        "CountyDataWithGender",
+                        "test1","tst",
+                        "lifetables",
+                        "mergedData",
+                        "ListOfFirstNames",
+                        "namesbyAgency")))
 
+gc()
 
 ## count how many per year
 ## count how many died per year
 ## somehow calc the median age
 
-lifetables <- lifetables
-head(lifetables)
-summary(lifetables)
+
+listOfReportsCombo = function(sel_name)
+  {
+
+mergedData <- tst  %>% filter(name == sel_name) %>%
+  left_join(test1 ) %>% distinct() %>% droplevels() %>%
+  mutate(Age = AgeYear - year) %>% filter(Age > -1)
+
+ages <- mergedData %>%
+  left_join(lifetables,
+            by = c("decade" = "year",
+                   "sex" = "sex"
+            )) %>% distinct() %>% filter(Age  == x)
+
+year2016 <- ages %>% filter(AgeYear == 2016)
+
+res25 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.25)
+
+res25
+
+res50 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.5)
+
+res50
+
+res75 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.75)
+
+res75
+
+xm <- weighted.mean(year2016$Age,year2016$lx)
+xm
+
+comboTests <- cbind(res25, res50, res75, xm, sel_name)
+
+}
+
+strt<-Sys.time()
+
+testdataExpected <- lapply(as.character(unique(tst$name)), listOfReportsCombo)
+
+print(Sys.time()-strt)
+
+df <- testdataExpected %>%  #head(1000) %>%
+  plyr::ldply(data.frame)
+
+save.image(file = "df.RData")
+ 
+# testNamesSampe <- as.character(unique(tst$name)) %>% head(100)
+# 
+# # devtools::install_github("hadley/multidplyr")
+# 
+# library(multidplyr)
+# 
+# library(doParallel)
+# 
+# registerDoParallel()
+# 
+# getDoParWorkers()
+# 
+# registerDoSEQ()  
+# getDoParWorkers()
+# 
+# registerDoParallel(cores=2)  
+# getDoParWorkers()
+# 
+# cl <- makeCluster(2)  
+# registerDoParallel(cl)  
+# 
+# comb <- function(...) {
+#   mapply('cbind', ...,
+#          SIMPLIFY=FALSE)
+# }
+# 
+# 
+# strt<-Sys.time()
+# 
+# result <- foreach(i=1:length(testNamesSampe), .combine='comb', .multicombine=TRUE) %dopar% {
+# 
+# mergedData <- tst  %>% filter(name == testNamesSampe[i]) %>%
+#   left_join(test1 ) %>% distinct() %>% droplevels() %>%
+#   mutate(Age = AgeYear - year) %>% filter(Age > -1)
+# 
+# ages <- mergedData %>%
+#   left_join(lifetables,
+#             by = c("decade" = "year",
+#                    "sex" = "sex"
+#             )) %>% distinct() %>% filter(Age  == x)
+# 
+# year2016 <- ages %>% filter(AgeYear == 2016)
+# 
+# res25 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.25)
+# 
+# res25
+# 
+# res50 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.5)
+# 
+# res50
+# 
+# res75 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.75)
+# 
+# res75
+# 
+# xm <- weighted.mean(year2016$Age,year2016$lx)
+# xm
+# 
+# comboTests <- cbind(res25, res50, res75, xm, uniq[i])
+# }
+# 
+# print(Sys.time()-strt)
+# 
+# dfNew <- result %>%  #head(1000) %>%
+#   plyr::ldply(data.frame)
+
+
 
 # Usage
 # 
@@ -834,34 +964,44 @@ summary(lifetables)
 # 
 # year = Year
 
+```
 
-# join the names to the lifetables
+```{r agesByCounty}
 
-t <- mergedData %>% left_join(lifetables,
-                   by = c("decade" = "year",
-                          "sex" = "sex"
-                          )) %>% distinct() %>% filter(Age  == x)
+# get a list of first names by agency
 
-year2016 <- t %>% filter(AgeYear == 2016)
+ # get the number of first names by county
+ # match these to the set of estimated age by name
+ # cal the avg age per county
+
+ df <- df %>% 
+   mutate(res25 = as.numeric(as.character(res25)),
+          res50 = as.numeric(as.character(res50)),
+          res75 = as.numeric(as.character(res75)),
+          xm = as.numeric(as.character(xm)))
+
+ namesByCounty <- CountyDataWithGender %>% 
+   filter(Year == 2014) %>%
+   droplevels() %>%
+   group_by(Agency, name) %>%
+   summarise(firstNameCount = n()) %>%
+   left_join(df,
+             by = c("name" = "sel_name")) %>%
+   filter(!is.na(xm)) %>%
+   summarise(`Weighted Average Age` = weighted.mean(xm, firstNameCount, na.rm = TRUE),
+             `Weighted Median Age`  = isotone::weighted.fractile(xm, firstNameCount, p = 0.5))
+ 
+```
 
 
-res25 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.25)
-
-res25
-
-res50 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.5)
-
-res50
+\newpage
 
 
-res75 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.75)
+```{r tableAgesByCounty, include=TRUE}
 
-res75
-
-
-xm <- weighted.mean(year2016$Age,year2016$lx)
-xm
-
+pander(namesByCounty,
+       split.table = Inf,
+       caption = "Estimated age average by county for 2014 using the first name as predictor")
 
 ```
 
