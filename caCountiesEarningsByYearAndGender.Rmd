@@ -32,7 +32,7 @@ rm(list=ls(all=TRUE)) #start with empty workspace
 
 startTime <- Sys.time() # start the clock
 
-knitr::opts_chunk$set(cache = TRUE, echo = FALSE, message = FALSE, warning = FALSE, include = FALSE)
+knitr::opts_chunk$set(cache = FALSE, echo = FALSE, message = FALSE, warning = FALSE, include = FALSE)
 
 setwd("~/GitHub/CaliforniaCountiesEarningsByYearAndGender") # set the working directory
 list.files()
@@ -776,8 +776,8 @@ ListOfFirstNames <- CountyDataWithGender %>% ungroup() %>%
   mutate(name = as.factor(as.character(name)),
          sex  = as.factor(as.character(sex ))) %>%
   # filter(name == "Moises") %>%
-  filter(year >= 2016-70,   # filter for persons between 70 and 16 years 'working age' as of 2016
-         year <= 2016-16) %>% distinct() %>%
+  filter(year >= 2016-70,   # filter for persons between 70 and 21 years 'working age' as of 2016
+         year <= 2016-21) %>% distinct() %>%
   droplevels()
 
 summary(ListOfFirstNames)
@@ -786,10 +786,10 @@ head(ListOfFirstNames)
 
 # create a range of years from 1900 to 2016
 
-yearsSeq <- data.frame(AgeYear =c( seq(1900, 2016, by=1))) 
+yearsSeq <- data.frame(AgeYear = c( seq(1900, 2016, by=1))) 
 
 tst <- ListOfFirstNames %>% 
-  dplyr::select (name, year, n, sex) %>%
+  dplyr::select(name, year, n, sex) %>%
   mutate(decade = year - (year %% 10)) %>% 
   filter(year >= 1900)
 
@@ -797,21 +797,22 @@ lifetables <- lifetables
 head(lifetables)
 summary(lifetables)
 
-ListOfFirstNames %>% filter(name == "Moises") %>% ggplot( aes(x= year, y = n)) +
-   geom_bar(stat="identity")
+ListOfFirstNames %>% filter(name == "Moises") %>% ggplot( aes(x = year, y = n)) +
+   geom_bar(stat = "identity")
 
-test1 <- expand.grid(AgeYear= yearsSeq$AgeYear,
-                    year = ListOfFirstNames$year)  %>% distinct() 
+test1 <- expand.grid(AgeYear = yearsSeq$AgeYear,
+                    year = ListOfFirstNames$year)  %>% distinct() %>%
+  mutate(Age = AgeYear - year) %>% filter(Age > -1)
 
 # get the object sizes 
 for (thing in ls()) {
     message(thing)
-    print(object.size(get(thing)), units='auto')
+    print(object.size(get(thing)), units = 'auto')
     }
 
 # remove data that is not longer necessary
 
-rm(list=setdiff(ls(), c("startTime",
+rm(list = setdiff(ls(), c("startTime",
                         "CountyDataWithGender",
                         "test1","tst",
                         "lifetables",
@@ -821,17 +822,134 @@ rm(list=setdiff(ls(), c("startTime",
 
 gc()
 
-## count how many per year
-## count how many died per year
-## somehow calc the median age
+# scrape the labor participation rate
+
+library(rvest)
+
+workParticipationRate <- read_html('http://www.bls.gov/emp/ep_table_303.htm') %>%
+    html_table(fill = TRUE) %>%
+    .[[1]]
+
+workParticipationRate <- workParticipationRate
+
+workParticipationRate <- workParticipationRate[c(-1:-24,-66:-nrow(workParticipationRate)), c(-2,-3,-5:-ncol(workParticipationRate)) ]
+
+workParticipationRate
+
+# assigned col names based on row
+
+colNAMES <- c("Group", "Rate")
+
+colnames(workParticipationRate) <- colNAMES
+
+# clean up the data
+
+workParticipationRate <- workParticipationRate %>%
+ filter(!grepl("older", Group, ignore.case = TRUE)) %>%
+  filter(!is.na(Rate)) %>%
+  mutate(Rate  = as.numeric(Rate)) %>%
+  filter(Group != "65 to 74",
+         Group != "55 to 64") %>% droplevels() 
+
+# add a column with gender values
+
+workParticipationRate <- workParticipationRate %>%
+  mutate(Sex = rep(c("M","F"), each = nrow(workParticipationRate)/2)  )
+
+# modify the work participation data to expand it
+
+listdf <- workParticipationRate$Group %>% 
+  unique() %>% 
+  as.data.frame() %>%
+  select(Groups = 1) %>%
+  mutate(Groups = gsub(" to ","|", Groups)) %>%
+         separate(Groups,  into = c("start","end")) %>%
+  mutate(elapsed = as.numeric(end) - as.numeric(start)  ) %>%
+  filter(elapsed %in% c(3,4,9)) %>%
+  mutate(Group = paste0(start," to ",end)) %>%
+  left_join(workParticipationRate) %>%
+  arrange(Sex) 
+
+# expand the data based on years grouped
+
+workParticipationRate <- data.frame(Group = rep(listdf$Group,
+                                                 listdf$elapsed + 1),
+                                                 Rate = rep(listdf$Rate,
+                                                 listdf$elapsed + 1),
+                                                 sex = rep(listdf$Sex,
+                                                 listdf$elapsed + 1)) %>%
+  group_by(sex) %>% 
+  mutate(years = 1,
+         workParticipation = Rate/100,
+         Age = cumsum(years) + 15) %>%
+  select(sex, workParticipation, Age) %>% print(n = 80)
+
+
+unEmpByAge <- read_html('http://www.bls.gov/web/empsit/cpseea10.htm') %>%
+    html_table(fill = TRUE) %>%
+    .[[1]]
+
+
+unEmpByAge <- unEmpByAge[c(-1:-17,-30,-43:-nrow(unEmpByAge)),
+                         c(-3:-ncol(unEmpByAge)) ]
+
+# assigned col names based on row
+
+colNAMES <- c("Group", "Rate")
+
+colnames(unEmpByAge) <- colNAMES
+
+# clean up the data
+
+unEmpByAge <- unEmpByAge %>%
+  filter(!grepl("16 years and over|20 years and over|16 to 19 years|25 years and over|25 to 54 years",
+                Group, ignore.case = TRUE)) %>%
+  filter(!is.na(Rate)) %>%
+  mutate(Rate  = as.numeric(Rate),
+         Group = gsub("years and over","to 75 years", Group)) %>% droplevels() 
+
+# add a column with gender values
+
+unEmpByAge <- unEmpByAge %>%
+  mutate(Sex = rep(c("M","F"), each = nrow(unEmpByAge)/2)  )
+
+# modify the work participation data to expand it
+
+listdfUnEmpRate <- unEmpByAge$Group %>% 
+  unique() %>% 
+  as.data.frame() %>%
+  select(Groups = 1) %>%
+  mutate(Groups = gsub(" years","", Groups),
+         Groups = gsub(" to ","|", Groups)) %>%
+         separate(Groups,  into = c("start","end")) %>%
+  mutate(elapsed = as.numeric(end) - as.numeric(start)  ) %>%
+  mutate(Group = paste0(start," to ",end, " years")) %>%
+  left_join(unEmpByAge) %>%
+  arrange(Sex) 
+
+# expand the data based on years grouped
+
+listdfUnEmpRate <- data.frame(Group = rep(listdfUnEmpRate$Group,
+                                                 listdfUnEmpRate$elapsed + 1),
+                                                 Rate = rep(listdfUnEmpRate$Rate,
+                                                 listdfUnEmpRate$elapsed + 1),
+                                                 sex = rep(listdfUnEmpRate$Sex,
+                                                 listdfUnEmpRate$elapsed + 1)) %>%
+  group_by(sex) %>% 
+  mutate(years = 1,
+         UnemploymentRate = Rate/100,
+         Age = cumsum(years) + 15) %>%
+  select(sex, UnemploymentRate, Age) %>% print(n = 80) 
+
+# createTableCalcAgesByName
 
 
 listOfReportsCombo = function(sel_name)
   {
 
+  # sel_name <- "Moises"
 mergedData <- tst  %>% filter(name == sel_name) %>%
-  left_join(test1 ) %>% distinct() %>% droplevels() %>%
-  mutate(Age = AgeYear - year) %>% filter(Age > -1)
+  left_join(test1 ) %>% distinct() %>% droplevels() 
 
 ages <- mergedData %>%
   left_join(lifetables,
@@ -839,28 +957,33 @@ ages <- mergedData %>%
                    "sex" = "sex"
             )) %>% distinct() %>% filter(Age  == x)
 
-year2016 <- ages %>% filter(AgeYear == 2016)
+year2016 <- ages %>% filter(AgeYear == 2016) %>%
+  mutate(percentAlive = lx/100000) %>% 
+  left_join(workParticipationRate) %>%
+  mutate(WorkingPop = percentAlive * workParticipation *n) %>%
+  left_join(listdfUnEmpRate) %>%
+  mutate(WorkingPopEmplod = WorkingPop * (1-UnemploymentRate)) 
 
-res25 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.25)
+res25 <- isotone::weighted.fractile(year2016$Age, year2016$WorkingPopEmplod, p = 0.25)
 
 res25
 
-res50 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.5)
+res50 <- isotone::weighted.fractile(year2016$Age, year2016$WorkingPopEmplod, p = 0.5)
 
 res50
 
-res75 <- isotone::weighted.fractile(year2016$Age,year2016$lx, p = 0.75)
+res75 <- isotone::weighted.fractile(year2016$Age, year2016$WorkingPopEmplod, p = 0.75)
 
 res75
 
-xm <- weighted.mean(year2016$Age,year2016$lx)
+xm <- weighted.mean(year2016$Age, year2016$WorkingPopEmplod)
 xm
 
 comboTests <- cbind(res25, res50, res75, xm, sel_name)
 
 }
 
-strt<-Sys.time()
+strt <- Sys.time()
 
 testdataExpected <- lapply(as.character(unique(tst$name)), listOfReportsCombo)
 
